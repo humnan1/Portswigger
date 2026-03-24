@@ -1,1 +1,403 @@
+1) What SQL injection is
 
+SQL injection (SQLi) is a web security vulnerability that allows an attacker to interfere with the queries that an application makes to its database.
+
+This can let an attacker:
+
+view data they should not normally be able to retrieve
+access data belonging to other users
+access any other data the application can reach
+modify or delete data, causing persistent changes to the application’s content or behaviour
+in some situations, compromise the underlying server or other back-end infrastructure
+in some situations, perform denial of service (DoS) attacks
+Simple idea
+
+A website sends commands to a database. If user input is placed inside those commands without proper protection, an attacker can change what the database does.
+
+Very simple example
+
+A website has a login box:
+
+Username: hamd
+Password: 1234
+
+the website might run a query like:
+SELECT * FROM users WHERE username = 'hamd' AND password = '1234';
+
+This means:
+
+go to the database
+find a user with this username and password
+
+The problem starts when the website trusts what the user types.
+
+If an attacker types:
+
+' OR 1=1 --
+
+SELECT * FROM users WHERE username = '' OR 1=1 -- 
+OR 1=1 is always true
+-- comments out the rest of the query
+
+So the database thinks:
+
+“This condition is true, so let them in.”
+
+This is a login bypass.
+
+
+SQL injection means typing something into a website that changes the database command.
+
+An attacker may be able to:
+
+view data
+change or delete data
+take over the system in advanced cases
+crash the system with DoS in some cases
+
+You can detect SQL injection using a systematic set of tests against every entry point in the application.
+
+Main tests
+A. Submit a single quote
+
+Try sending: ' 
+and look for:
+
+errors
+strange behaviour
+any unusual response
+
+Why this matters:
+
+SQL uses quotes like 'admin'
+sending ' might break the query
+
+
+Use SQL-specific syntax
+
+Try input that evaluates to the original value of the entry point, and also to a different value, then compare the responses.
+
+You are looking for:
+
+systematic differences in application behaviour
+changes in page content
+changes in error messages
+C. Use boolean conditions
+
+Try payloads such as:
+OR 1=1
+OR 1=2
+
+and compare the responses.
+
+1=1 is true
+1=2 is false
+
+If the responses differ, that can indicate SQL injection.
+
+D. Use time-delay payloads
+
+Try payloads designed to trigger a delay when executed within a SQL query.
+
+Example idea:
+SLEEP(5)
+
+If the page suddenly takes around 5 seconds to respond, the input may be being executed inside the database.
+
+E. Use OAST payloads
+
+OAST payloads are designed to trigger an out-of-band network interaction when executed within a SQL query.
+
+If the target makes a network request that you can monitor, that can confirm SQL injection.
+
+Tooling
+
+You can also use Burp Scanner to find the majority of SQL injection vulnerabilities quickly and reliably.
+
+It does this by:
+
+automatically trying payloads
+checking responses
+looking for vulnerabilities faster than manual testing
+
+
+SQL injection can happen anywhere your input is used inside a database query.
+
+The most common place is the WHERE clause.
+
+A. WHERE clause in a SELECT query
+
+Example:
+SELECT * FROM users WHERE username = 'input';
+Meaning:
+
+get everything from the users table
+only where username matches the input
+
+This is common in:
+
+login forms
+search boxes
+
+A basic injection example is:
+' OR 1=1 --
+
+
+UPDATE users SET password = 'newpass' WHERE username = 'input';
+If vulnerable, an attacker could:
+
+change someone else’s password
+alter records they should not control
+
+
+
+SELECT input FROM users;
+If input is not safe, an attacker may control what data is selected.
+
+SELECT * FROM products ORDER BY input;
+If vulnerable, you may not always be able to inject a full query, but you can still:
+
+test column numbers
+extract information
+
+SELECT
+
+SELECT means get data.
+
+FROM
+
+FROM users means get data from the users table.
+
+WHERE
+
+WHERE means only return rows where the condition is true.
+
+
+SELECT * FROM users WHERE username = 'admin';
+This means:
+
+get everything
+from the users table
+only if the username is admin
+
+username = '' OR 1=1 -- '
+1=1 = always true
+-- = ignore the rest
+
+
+
+A shopping application displays products in different categories.
+
+When the user clicks on the Gifts category, the browser requests a URL like:
+https://insecure-website.com/products?category=Gifts
+
+This causes the application to make an SQL query to retrieve details of the relevant products from the database:
+SELECT * FROM products WHERE category = 'Gifts' AND released = 1
+
+It asks the database to return:
+
+all details (*)
+from the products table
+where the category is Gifts
+and where released = 1
+
+The released = 1 restriction hides products that are not released.
+
+If the application does not defend against SQL injection, an attacker can manipulate the category parameter.
+https://insecure-website.com/products?category=Gifts'--
+SELECT * FROM products WHERE category = 'Gifts'--' 
+
+-- is a comment indicator in SQL, so the rest of the query is ignored.
+
+That means the query no longer includes:
+
+AND released = 1
+So all products may be displayed, including unreleased products.
+
+
+
+https://insecure-website.com/products?category=Gifts'+OR+1=1--
+SELECT * FROM products WHERE category = 'Gifts' OR 1=1--
+Because 1=1 is always true, the query can return all items.
+
+Be careful when injecting OR 1=1 into a SQL query. Even if it looks harmless in one place, applications may reuse the same request data in multiple queries. If the condition reaches an UPDATE or DELETE statement, it could cause accidental data loss.
+
+For the lab:
+
+the application contains a SQL injection vulnerability in the product category filter
+when the user selects a category, the application runs a query like:
+
+SELECT * FROM products WHERE category = 'Gifts' AND released = 1
+
+to solve the lab, the goal is to inject SQL so the application displays one or more released products
+in the example, clicking Corporate Gifts showed a URL such as:
+
+https://0a0200f6035b0b9c80875df400f300d8.web-security-academy.net/filter?category=Corporate+Gifts
+
+the injection used was:
+'+OR+1=1--
+
+
+
+Scenario
+
+An application allows users to log in with a username and password.
+If a user submits:
+
+username: wiener
+password: bluecheese
+then the application checks the credentials with a query like:
+
+SELECT * FROM users WHERE username = 'wiener' AND password = 'bluecheese'
+
+If the query returns the details of a user, the login is successful. Otherwise, it is rejected.
+
+Using the SQL comment sequence --, you can remove the password check from the WHERE clause.
+
+Example username input:
+administrator'--
+
+with a blank or random password.
+
+This can produce a query like:
+SELECT * FROM users WHERE username = 'administrator'--'
+
+he password part is commented out, so the database only checks for the username administrator.
+
+That can log the attacker in as that user.
+
+Lab summary
+
+For the lab:
+
+the application has a SQL injection vulnerability in the login function
+the goal is to log in as the administrator user
+on the login screen, the username entered was:
+administrator'--
+the password check was commented out
+a random password could then be entered
+the login succeeded as administrator
+
+
+
+If the application shows the results of a SQL query, an attacker can sometimes use SQL injection to retrieve data from other tables in the database.
+
+The UNION keyword lets you execute an additional SELECT query and append the results to the original query.
+
+Example original query
+
+If an application executes the following query containing the user input Gifts:
+SELECT name, description FROM products WHERE category = 'Gifts'
+
+SELECT name, description → what data to show
+FROM products → which table to read from
+WHERE category = 'Gifts' → only rows that match the category
+
+An attacker can submit:
+' UNION SELECT username, password FROM users--
+This changes the query to
+SELECT name, description FROM products WHERE category = '' UNION SELECT username, password FROM users--';
+
+What this does
+UNION combines the results of two queries
+the application may return usernames and passwords along with the product data
+Important rule
+
+The queries combined with UNION must have:
+
+the same number of columns
+compatible data types
+
+
+
+Blind SQL injection vulnerabilites
+- The application does not return the results of the SQL query or the details of any database errors within its responses
+-Blind vulnerabilites can still be exploited to access unorthorised data but the techniques involed are more complicated
+
+You can change the logic of the query to trigger a detectable difference in the application's response depending on the truth of a single condition. this might involve injecting a new condition into some Boolean logic, or condtionally triggering an error such as divide by zero
+
+You can trigger a time delay in the processing of the query, this enables you ti infer the truth og the condition based on the time that the application takes to respond
+
+You can trigger an out of band network interaction using OAST techniques. this technique works in situatios where others do not . you can directly exfiltrate data via the out of band channel , e.g. you can place the data into a DNS lookup for a domain that you control.
+
+Second order SQL injection
+
+First order SQL injection occurs when the application processes user input from an HTTP request and incorporates the input into a SQL query in an unsafe way.
+
+Second order SQL injection occurs when the application takes user input from an HTTP request and storesit for future use. . this is usually done by placing the input into a databse., but no vulnerability occurs at the point where the data is stored. Later, when handling a different HTTP request, application retrieves the stroed data and incorporates it into a SQL query in an unsafe way.
+this often occurs in situations where developers are aware of SQL injection vulnerabilites and so safely handle the initial placement of the input into the database . when the data is later processes, it is deemed to be safe since it was previously placed into the databse safely. at this point the data is handled in an unsafe way, because the developer wringly deems it to be trusted.
+
+The hacker types something into a form, the website stores it safely and nothing bad happens yet. later the website readsthat stroed value and uses it in a new sql query unsafely.
+
+Examining the database
+
+Some core features of the SQL language are implemented in the same way across popular database platforms, and so many ways of detecting and exploiting SQL injection vulnerabilities work identically on different types of database.
+
+However, there are also many differences between common databases. These mean that some techniques for detecting and exploiting SQL injection work differently on different platforms. For example:
+
+Syntax for string concatenation.
+Comments.
+Batched (or stacked) queries.
+Platform-specific APIs.
+Error messages.
+
+( some attacks work everywher,some attacks need to be adjusted based on the database)
+
+Different databases are like different dialects:
+
+Same core language (SQL)
+Slightly different “accents” (syntax)
+
+These usually work across most databases:
+
+SELECT, FROM, WHERE
+OR 1=1
+basic UNION attacks
+
+some databses use differen tcommesnts instead of -- e..g # /**/
+
+Stacked (batched) queries
+his means running multiple queries at once
+SELECT * FROM users; DROP TABLE users;
+
+some databses allow this and some block it completely
+
+
+After you identify a sgql injection vulnerability it is often useful to obtain information about the databse, this information can help you rxploit the vulnerability 
+You can query the version details for the database, different methods work for different database types e.g. in oracle you can:
+SELECT * FROM v$version
+
+You can also identify what database tables exist, and the columns they contain. For example, on most databases you can execute the following query to list the tables:
+SELECT * FROM information_schema.tables
+
+
+You can perform sql injection  attacks using any controllable input that is processed as a sql query by the aplication. For example, some websites take input in JSON or XML format and use this to query the database.
+Websites can take input in different formats:
+
+JSON
+XML
+forms
+headers
+
+For example, the following XML-based SQL injection uses an XML escape sequence to encode the S character in SELECT:
+<stockCheck>
+    <productId>123</productId>
+    <storeId>999 &#x53;ELECT * FROM information_schema.tables</storeId>
+</stockCheck>
+
+This will be decoded server-side before being passed to the SQL interpreter.
+
+
+Preventing an SQL injection
+You can prevent most instances of SQL injection using parameterized queries instead of string concatenation within the query.
+
+The following code is vulnerable to SQL injection because the user input is concatenated directly into the query:
+String query = "SELECT * FROM products WHERE category = '"+ input + "'";
+Statement statement = connection.createStatement();
+ResultSet resultSet = statement.executeQuery(query);
+
+You can rewrite this code in a way that prevents the user input from interfering with the query structure:
+
+PreparedStatement statement = connection.prepareStatement("SELECT * FROM products WHERE category = ?");
+statement.setString(1, input);
+ResultSet resultSet = statement.executeQuery();
